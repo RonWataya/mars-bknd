@@ -107,6 +107,7 @@ app.get('/hashtags', (req, res) => {
     });
 });
 
+
 // Endpoint to fetch platforms for dropdown
 app.get('/platforms', (req, res) => {
     db.query('SELECT * FROM platforms', (err, results) => {
@@ -115,7 +116,13 @@ app.get('/platforms', (req, res) => {
     });
 });
 
-//register incident
+// Endpoint to fetch phrases
+app.get('/hashtags', (req, res) => {
+    db.query('SELECT * FROM hashtags', (err, results) => {
+        if (err) res.status(500).send(err);
+        res.json(results);
+    });
+});
 // Register incident
 app.post('/registerIncident', upload.array('files'), (req, res) => {
     // Assuming this is correctly determined or retrieved earlier in your application logic
@@ -131,6 +138,7 @@ app.post('/registerIncident', upload.array('files'), (req, res) => {
         entity_name = 'N/A',
         actions_taken = 'None reported',
         tags = 'general',
+        url = 'url',
         platform = 'Other'
     } = req.body;
 
@@ -140,12 +148,12 @@ app.post('/registerIncident', upload.array('files'), (req, res) => {
     const insertIncidentSql = `
         INSERT INTO incidents (
             public_user_id, abuser_handle, attack_type, description, target_of_attack, journalist_name,
-            media_house, entity_name, actions_taken, platform, tags
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            media_house, entity_name, actions_taken, platform, tags, url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     // Added `public_user_id` at the beginning of the parameters array
-    db.query(insertIncidentSql, [public_user_id, abuser_handle, attack_type, description, target_of_attack, journalist_name, media_house, entity_name, actions_taken, platform, tags], (error, results) => {
+    db.query(insertIncidentSql, [public_user_id, abuser_handle, attack_type, description, target_of_attack, journalist_name, media_house, entity_name, actions_taken, platform, tags, url], (error, results) => {
         if (error) {
             console.error('Error inserting into incidents:', error);
             res.status(500).send('Error registering the incident');
