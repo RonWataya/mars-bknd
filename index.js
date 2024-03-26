@@ -125,23 +125,24 @@ app.get('/getPhrases', (req, res) => {
 });
 
 //Add phrases
-app.post('/addPhrases', (req, res) => {
-    const { phrases } = req.body; // Expecting an array of { phrase, attack_type }
-    if (!phrases || !Array.isArray(phrases)) {
+// POST endpoint to insert a single phrase
+app.post('/addPhrase', (req, res) => {
+    const { phrase, attack_type } = req.body; // Expecting individual entries
+    if (!phrase || !attack_type) {
       return res.status(400).send('Invalid input');
     }
   
-    const sql = `INSERT INTO phrases (phrase, attack_type) VALUES ?`;
-    const values = phrases.map(p => [p.phrase, p.attack_type]);
+    const sql = `INSERT INTO phrases (phrase, attack_type) VALUES (?, ?)`;
   
-    connection.query(sql, [values], (error, results) => {
+    connection.query(sql, [phrase, attack_type], (error, results) => {
       if (error) {
-        return res.status(500).send('Error inserting phrases');
+        return res.status(500).send('Error inserting phrase');
       }
-      res.send(`Inserted ${results.affectedRows} phrases`);
+      res.send(`Inserted phrase with id ${results.insertId}`);
     });
   });
   
+
 // Register incident
 app.post('/registerIncident', upload.array('files'), (req, res) => {
     // Assuming this is correctly determined or retrieved earlier in your application logic
