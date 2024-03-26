@@ -117,12 +117,31 @@ app.get('/platforms', (req, res) => {
 });
 
 // Endpoint to fetch phrases
-app.get('/hashtags', (req, res) => {
-    db.query('SELECT * FROM hashtags', (err, results) => {
+app.get('/getPhrases', (req, res) => {
+    db.query('SELECT * FROM phrases', (err, results) => {
         if (err) res.status(500).send(err);
         res.json(results);
     });
 });
+
+//Add phrases
+app.post('/addPhrases', (req, res) => {
+    const { phrases } = req.body; // Expecting an array of { phrase, attack_type }
+    if (!phrases || !Array.isArray(phrases)) {
+      return res.status(400).send('Invalid input');
+    }
+  
+    const sql = `INSERT INTO phrases (phrase, attack_type) VALUES ?`;
+    const values = phrases.map(p => [p.phrase, p.attack_type]);
+  
+    connection.query(sql, [values], (error, results) => {
+      if (error) {
+        return res.status(500).send('Error inserting phrases');
+      }
+      res.send(`Inserted ${results.affectedRows} phrases`);
+    });
+  });
+  
 // Register incident
 app.post('/registerIncident', upload.array('files'), (req, res) => {
     // Assuming this is correctly determined or retrieved earlier in your application logic
