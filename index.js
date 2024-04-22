@@ -12,21 +12,17 @@ const app = express();
 
 
 // parse requests of content-type - application/json
-
-app.use(express.json({ limit: '50mb' }));
-// parse requests of content-type - application/x-www-form-urlencoded
-
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// Add Access Control Allow Origin headers
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-    next();
-});
+// Configure CORS
 app.use(cors({
-    origin: '*'
+    origin: '*', // Allows all domains
+    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+    credentials: true, // Allows cookies to be sent from the client
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
+
+// Other middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Multer setup for file uploads
 const storage = multer.diskStorage({
