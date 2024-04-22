@@ -11,8 +11,6 @@ module.exports = {
     DB: DB,
     PORTAWS: PORTAWS
 };
-
-
 /*
 
 const HOST = 'localhost';
@@ -28,4 +26,5 @@ module.exports = {
     DB: DB,
     PORTAWS: PORTAWS
 };
+
 */

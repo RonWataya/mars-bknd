@@ -15,7 +15,7 @@ const app = express();
 // Configure CORS
 app.use(cors({
     origin: '*', // Allows all domains
-    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+    optionsSuccessStatus: 200,
     credentials: true, // Allows cookies to be sent from the client
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
@@ -112,6 +112,18 @@ app.get('/platforms', (req, res) => {
     });
 });
 
+// Endpoint to get attack types
+app.get('/attackTypes', (req, res) => {
+    const sql = 'SELECT * FROM attack_types';
+    db.query(sql, (error, results) => {
+        if (error) {
+            res.status(500).send('Error fetching attack types');
+            return;
+        }
+        res.json(results);
+    });
+});
+
 // Endpoint to fetch phrases
 app.get('/getPhrases', (req, res) => {
     db.query('SELECT * FROM phrases', (err, results) => {
@@ -140,13 +152,13 @@ app.post('/addPhrase', (req, res) => {
   
 
 // Register incident
+// Register incident
 app.post('/registerIncident', upload.array('files'), (req, res) => {
-    // Assuming this is correctly determined or retrieved earlier in your application logic
-
+    // Extract parameters from request body with defaults
     const {
-        public_user_id ='1',
+        public_user_id = '1',
         abuser_handle = 'N/A',
-        attack_type = 'N/A',
+        attack_type_id, // Now expecting an attack type ID instead of a description string
         description = 'No description provided',
         target_of_attack = 'N/A',
         journalist_name = 'Anonymous',
@@ -160,16 +172,16 @@ app.post('/registerIncident', upload.array('files'), (req, res) => {
 
     const files = req.files.length > 0 ? req.files.map(file => file.path) : ['No files uploaded'];
 
-    // Adjusted INSERT INTO statement to include `public_user_id`
+    // Insert the incident into the database
     const insertIncidentSql = `
         INSERT INTO incidents (
-            public_user_id, abuser_handle, attack_type, description, target_of_attack, journalist_name,
+            public_user_id, abuser_handle, attack_type_id, description, target_of_attack, journalist_name,
             media_house, entity_name, actions_taken, platform, tags, url
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    // Added `public_user_id` at the beginning of the parameters array
-    db.query(insertIncidentSql, [public_user_id, abuser_handle, attack_type, description, target_of_attack, journalist_name, media_house, entity_name, actions_taken, platform, tags, url], (error, results) => {
+    // Execute the insertion
+    db.query(insertIncidentSql, [public_user_id, abuser_handle, attack_type_id, description, target_of_attack, journalist_name, media_house, entity_name, actions_taken, platform, tags, url], (error, results) => {
         if (error) {
             console.error('Error inserting into incidents:', error);
             res.status(500).send('Error registering the incident');
@@ -177,25 +189,34 @@ app.post('/registerIncident', upload.array('files'), (req, res) => {
         }
 
         const incidentId = results.insertId;
+        // Call updateHarassmentCounts right after inserting the incident
+        updateHarassmentCounts();
+        // Update attack type details
+        const updateAttackTypeSql = 'UPDATE attack_type_details SET count = count + 1, harassment_attack_types = harassment_attack_types + 1 WHERE attack_type_id = ?';
+        db.query(updateAttackTypeSql, [attack_type_id], (updateError) => {
+            if (updateError) {
+                console.error('Error updating attack type count:', updateError);
+                // Optionally, handle rollback or other cleanup
+                res.status(500).send('Error updating attack type details');
+                return;
+            }
 
-        // If there are files, insert them
-        if (files[0] !== 'No files uploaded') {
-            const insertFilesSql = 'INSERT INTO incident_files (incident_id, file_path) VALUES ?';
-            const filesValues = files.map(file => [incidentId, file]); // Adjusted to include `incident_id` and `file_path`
-            db.query(insertFilesSql, [filesValues], (error) => {
-                if (error) {
-                    console.error('Error inserting files:', error);
-                    // Optionally, you could delete the incident here to clean up.
-                    res.status(500).send('Error registering files for the incident');
-                    return;
-                }
-                // Respond successfully after all insert operations are done
-                res.json({ success: true, message: 'Incident and files registered successfully, with some fields using default values.' });
-            });
-        } else {
-            // No files to insert, respond successfully
-            res.json({ success: true, message: 'Incident registered successfully, with some fields using default values. No files were uploaded.' });
-        }
+            // If there are files, insert them
+            if (files[0] !== 'No files uploaded') {
+                const insertFilesSql = 'INSERT INTO incident_files (incident_id, file_path) VALUES ?';
+                const filesValues = files.map(file => [incidentId, file]);
+                db.query(insertFilesSql, [filesValues], (filesError) => {
+                    if (filesError) {
+                        console.error('Error inserting files:', filesError);
+                        res.status(500).send('Error registering files for the incident');
+                        return;
+                    }
+                    res.json({ success: true, message: 'Incident and files registered successfully.' });
+                });
+            } else {
+                res.json({ success: true, message: 'Incident registered successfully. No files were uploaded.' });
+            }
+        });
     });
 });
 
@@ -220,6 +241,55 @@ app.get('/getIncidents', (req, res) => {
         res.json({ success: true, data: results });
     });
 });
+
+//Get home page social and attack types count
+// Endpoint to fetch social media data
+
+app.get('/social-media-attacks', (req, res) => {
+  const query = 'SELECT * FROM social_media';
+  db.query(query, (error, results) => {
+    if (error) throw error;
+    res.json(results);
+  });
+});
+
+//Scheduled task to count harrasments
+// Function to update harassment counts
+function updateHarassmentCounts() {
+  const sql = `
+    UPDATE social_media sm
+    JOIN (
+      SELECT platform, COUNT(*) as cnt
+      FROM incidents
+      GROUP BY platform
+    ) i ON sm.name = i.platform
+    SET sm.harassment_count = i.cnt;
+  `;
+
+  db.query(sql, (error, results, fields) => {
+    if (error) {
+      return console.error(error.message);
+    }
+    console.log('Harassment counts updated:', results.affectedRows);
+  });
+}
+
+// Endpoint to get attack types details
+app.get('/attack-type-count', (req, res) => {
+    const query = 'SELECT * FROM attack_type_details';
+    db.query(query, (error, results) => {
+      if (error) throw error;
+      res.json(results);
+    });
+});
+
+
+/* Schedule task to run every day at midnight (00:00)
+cron.schedule('0 0 * * *', () => {
+  console.log('Running a daily task to update harassment counts');
+  updateHarassmentCounts();
+});*/
+
 
 
 
