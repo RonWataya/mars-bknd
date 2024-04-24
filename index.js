@@ -4,6 +4,7 @@ const https = require('https');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
 const db = require("./config/db.js"); // Import your database connection from db.js
 const app = express();
 
@@ -47,15 +48,18 @@ app.use(express.static('public')); // Serve static files
 
 
 // Route to register a public user
-app.post('/registerPublicUser', (req, res) => {
+app.post('/registerPublicUser', async (req, res) => {
     const { full_name, email, phone, organization, is_journalist, city, postal_code, address, password } = req.body;
   
+    // Hash the password before saving to the database
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const query = `
       INSERT INTO public_users (full_name, email, phone, organization, is_journalist, city, postal_code, address, password)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
   
-    db.query(query, [full_name, email, phone, organization, is_journalist, city, postal_code, address, password], (error, results) => {
+    db.query(query, [full_name, email, phone, organization, is_journalist, city, postal_code, address, hashedPassword], (error, results) => {
       if (error) {
         console.error(error);
         res.status(500).send('Error registering the user');
@@ -63,25 +67,25 @@ app.post('/registerPublicUser', (req, res) => {
       }
       res.status(201).send({ message: 'User registered successfully', userId: results.insertId });
     });
-  });
-  
+});
 
-// Login route
+
 // Login route
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
-    // You should hash and compare passwords securely in production
+
     const query = 'SELECT * FROM public_users WHERE email = ? LIMIT 1';
 
-    db.query(query, [email], (err, results) => {
+    db.query(query, [email], async (err, results) => {
         if (err) {
             res.json({ success: false, message: "Error querying the database." });
             return;
         }
         if (results.length > 0) {
             const user = results[0];
-            // Verify password (assuming plaintext for simplicity; use hashing in production)
-            if (user.password === password) {
+            // Verify hashed password
+            const passwordMatch = await bcrypt.compare(password, user.password);
+            if (passwordMatch) {
                 // Remove password and other sensitive info from the user object
                 const { password, ...userData } = user;
                 res.json({ success: true, message: "Login successful.", userData });
@@ -94,6 +98,7 @@ app.post('/login', (req, res) => {
         }
     });
 });
+
 
 // Endpoint to fetch hashtags for dropdown
 app.get('/hashtags', (req, res) => {
@@ -386,49 +391,60 @@ app.patch('/pandaUser/:id/socialHandle', (req, res) => {
 });
 
 //register admin
-app.post('/registerAdmin', (req, res) => {
-    const { name, surname, email, phone } = req.body;
-    if (!name || !surname || !email || !phone) {
-        res.status(400).send('All fields are required');
-        return;
+app.post('/registerAdmin', async (req, res) => {
+    const { name, surname, email, phone, password } = req.body;
+    if (!(email && password && name && surname && phone)) {
+        return res.status(400).send("All inputs are required");
     }
 
-    const query = 'INSERT INTO admin_users (name, surname, email, phone) VALUES (?, ?, ?, ?)';
-    db.query(query, [name, surname, email, phone], (err, result) => {
-        if (err) {
-            console.error('Error registering admin user:', err);
-            res.status(500).send('Error registering admin user');
-            return;
+    // Check if user already exists
+    db.query('SELECT email FROM admin_users WHERE email = ?', [email], async (error, results) => {
+        if (results.length) {
+            return res.status(409).send("An admin with this email already exists.");
         }
-        res.send({ success: true, message: 'Admin registered successfully', adminId: result.insertId });
+
+        // Encrypt user password
+        const encryptedPassword = await bcrypt.hash(password, 10);
+
+        // Insert new admin into the database
+        const query = 'INSERT INTO admin_users (name, surname, email, phone, password) VALUES (?, ?, ?, ?, ?)';
+        db.query(query, [name, surname, email, phone, encryptedPassword], (error, results) => {
+            if (error) {
+                console.error('Failed to register admin:', error);
+                return res.status(500).send("Failed to register admin.");
+            }
+            res.status(201).send("Admin registered.");
+        });
     });
 });
+
 
 //login
 // Endpoint to log in an admin user
 app.post('/loginAdmin', (req, res) => {
     const { email, password } = req.body;
+    if (!(email && password)) {
+        return res.status(400).send("All input is required");
+    }
 
-    // In a real implementation, you would hash the incoming password and compare it to the stored hash
-    const query = 'SELECT * FROM admin_users WHERE email = ?';
-    db.query(query, [email], (err, results) => {
-        if (err) {
-            console.error('Error logging in:', err);
-            res.status(500).send('Error logging in');
-            return;
-        }
-        if (results.length === 0) {
-            res.status(404).send('User not found');
-            return;
-        }
-        // Simulated password check (do not use in production)
-        if (password === 'theActualPassword') {
-            res.send({ success: true, message: 'Login successful', admin: results[0] });
+    // Verify if admin exists in the database
+    db.query('SELECT * FROM admin_users WHERE email = ?', [email], async (error, results) => {
+        if (results.length) {
+            // Check password
+            const admin = results[0];
+            if (await bcrypt.compare(password, admin.password)) {
+                // Create token
+                // Note: Implement JWT or similar for secure token creation
+                res.status(200).send("Login successful!");
+            } else {
+                res.status(400).send("Invalid Credentials");
+            }
         } else {
-            res.status(401).send('Incorrect password');
+            res.status(400).send("Admin does not exist");
         }
     });
 });
+
 // set port, listen for requests
 const PORT = 5000;
 app.listen(PORT, () => {
