@@ -284,15 +284,151 @@ app.get('/attack-type-count', (req, res) => {
 });
 
 
-/* Schedule task to run every day at midnight (00:00)
+/*Schedule task to run every day at midnight (00:00)
 cron.schedule('0 0 * * *', () => {
   console.log('Running a daily task to update harassment counts');
   updateHarassmentCounts();
 });*/
 
+//Admin section
+// Endpoint to register a public user as a panda user
+app.post('/applyPandaUser', (req, res) => {
+    const { public_user_id, full_name, email, phone, organization, social_handle, prefered_contact } = req.body;
 
+    const sql = 'INSERT INTO panda_users (public_user_id, full_name, email, phone, organization, social_handle, prefered_contact, status) VALUES (?, ?, ?, ?, ?, ?, ?, "pending")';
+    db.query(sql, [public_user_id, full_name, email, phone, organization, social_handle, prefered_contact], (err, result) => {
+        if (err) {
+            console.error('Error applying as panda user:', err);
+            res.status(500).send('Failed to apply as panda user');
+            return;
+        }
+        res.status(201).send('Application submitted successfully, status is pending.');
+    });
+});
 
+// Endpoint for admin to update the status of a panda user
+app.post('/updatePandaUserStatus', (req, res) => {
+    const { id, status } = req.body; // status should be 'accepted' or 'declined'
 
+    if (!['accepted', 'declined'].includes(status)) {
+        res.status(400).send('Invalid status provided');
+        return;
+    }
+
+    const sql = 'UPDATE panda_users SET status = ? WHERE id = ?';
+    db.query(sql, [status, id], (err, result) => {
+        if (err) {
+            console.error('Error updating panda user status:', err);
+            res.status(500).send('Failed to update status');
+            return;
+        }
+        if (result.affectedRows === 0) {
+            res.status(404).send('Panda user not found');
+            return;
+        }
+        res.send('Status updated successfully');
+    });
+});
+
+app.get('/pandaUsers', (req, res) => {
+    const sql = 'SELECT * FROM panda_users';
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error('Error fetching panda users:', err);
+            res.status(500).send('Error fetching panda users');
+            return;
+        }
+        res.json(results);
+    });
+});
+
+// Endpoint to get a single panda user by id
+app.get('/pandaUser/:id', (req, res) => {
+    const { id } = req.params;
+    const sql = 'SELECT * FROM panda_users WHERE id = ?';
+    db.query(sql, [id], (err, results) => {
+        if (err) {
+            console.error('Error fetching panda user:', err);
+            res.status(500).send('Error fetching panda user');
+            return;
+        }
+        if (results.length === 0) {
+            res.status(404).send('Panda user not found');
+            return;
+        }
+        res.json(results[0]); // Send only the first result as ID should be unique
+    });
+});
+
+//update social handle
+app.patch('/pandaUser/:id/socialHandle', (req, res) => {
+    const { id } = req.params;
+    const { socialHandle } = req.body;
+
+    if (!socialHandle) {
+        res.status(400).send('Social handle is required');
+        return;
+    }
+
+    const sql = 'UPDATE panda_users SET social_handle = ? WHERE id = ?';
+    db.query(sql, [socialHandle, id], (err, result) => {
+        if (err) {
+            console.error('Error updating social handle:', err);
+            res.status(500).send('Error updating social handle');
+            return;
+        }
+        if (result.affectedRows === 0) {
+            res.status(404).send('Panda user not found');
+            return;
+        }
+        res.send({ success: true, message: 'Social handle updated successfully' });
+    });
+});
+
+//register admin
+app.post('/registerAdmin', (req, res) => {
+    const { name, surname, email, phone } = req.body;
+    if (!name || !surname || !email || !phone) {
+        res.status(400).send('All fields are required');
+        return;
+    }
+
+    const query = 'INSERT INTO admin_users (name, surname, email, phone) VALUES (?, ?, ?, ?)';
+    db.query(query, [name, surname, email, phone], (err, result) => {
+        if (err) {
+            console.error('Error registering admin user:', err);
+            res.status(500).send('Error registering admin user');
+            return;
+        }
+        res.send({ success: true, message: 'Admin registered successfully', adminId: result.insertId });
+    });
+});
+
+//login
+// Endpoint to log in an admin user
+app.post('/loginAdmin', (req, res) => {
+    const { email, password } = req.body;
+
+    // In a real implementation, you would hash the incoming password and compare it to the stored hash
+    const query = 'SELECT * FROM admin_users WHERE email = ?';
+    db.query(query, [email], (err, results) => {
+        if (err) {
+            console.error('Error logging in:', err);
+            res.status(500).send('Error logging in');
+            return;
+        }
+        if (results.length === 0) {
+            res.status(404).send('User not found');
+            return;
+        }
+        // Simulated password check (do not use in production)
+        if (password === 'theActualPassword') {
+            res.send({ success: true, message: 'Login successful', admin: results[0] });
+        } else {
+            res.status(401).send('Incorrect password');
+        }
+    });
+});
 // set port, listen for requests
 const PORT = 5000;
 app.listen(PORT, () => {
